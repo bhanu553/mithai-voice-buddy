@@ -3,7 +3,8 @@ import { Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-const WEBHOOK_URL = "https://space432.app.n8n.cloud/webhook-test/voice-reply";
+const TEST_URL = "https://space432.app.n8n.cloud/webhook-test/voice-reply";
+const PRODUCTION_URL = "https://space432.app.n8n.cloud/webhook/voice-reply";
 
 export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
@@ -79,7 +80,17 @@ export default function VoiceChatbot() {
     };
 
     try {
-      const response = await fetch(WEBHOOK_URL, {
+      // Send to test URL
+      fetch(TEST_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+
+      // Send to production URL
+      const response = await fetch(PRODUCTION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,25 +98,18 @@ export default function VoiceChatbot() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        throw new Error('Webhook request failed');
-      }
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Backend response:', data);
 
-      const data = await response.json();
-      console.log('Backend response:', data);
-
-      // Play audio
-      if (data.audioBase64) {
-        await playAudio(data.audioBase64);
+        // Play audio
+        if (data.audioBase64) {
+          await playAudio(data.audioBase64);
+        }
       }
 
     } catch (error) {
       console.error('Backend error:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Could not reach the assistant. Please try again.",
-      });
     }
   };
 
