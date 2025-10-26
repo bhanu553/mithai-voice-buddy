@@ -3,8 +3,7 @@ import { Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-const PRODUCTION_URL = "https://space432.app.n8n.cloud/webhook/voice-reply";
-const TEST_URL = "https://space432.app.n8n.cloud/webhook-test/voice-reply";
+const WEBHOOK_URL = "https://space432.app.n8n.cloud/webhook-test/voice-reply";
 
 export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
@@ -76,13 +75,11 @@ export default function VoiceChatbot() {
 
   const sendToBackend = async (userText: string) => {
     const payload = {
-      userText,
-      clientId: "anand_mithaiwala"
+      text: userText
     };
 
     try {
-      // Try production URL first
-      let response = await fetch(PRODUCTION_URL, {
+      const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,20 +87,8 @@ export default function VoiceChatbot() {
         body: JSON.stringify(payload),
       });
 
-      // If production fails, try test URL
       if (!response.ok) {
-        console.log('Production URL failed, trying test URL...');
-        response = await fetch(TEST_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      if (!response.ok) {
-        throw new Error('Both URLs failed');
+        throw new Error('Webhook request failed');
       }
 
       const data = await response.json();
