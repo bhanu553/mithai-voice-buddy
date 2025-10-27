@@ -61,11 +61,15 @@ export default function VoiceChatbot() {
   const stopAiAudio = () => {
     if (currentAudioRef.current) {
       console.log('🛑 User interrupted AI - stopping audio');
-      currentAudioRef.current.pause();
-      currentAudioRef.current.currentTime = 0;
-      const audioUrl = currentAudioRef.current.src;
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        const audioUrl = currentAudioRef.current.src;
+        if (audioUrl && audioUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(audioUrl);
+        }
+      } catch (error) {
+        console.error('⚠️ Error stopping audio:', error);
       }
       currentAudioRef.current = null;
       setIsAiSpeaking(false);
