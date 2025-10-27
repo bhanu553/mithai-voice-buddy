@@ -8,10 +8,12 @@ const PRODUCTION_URL = "https://space432.app.n8n.cloud/webhook/voice-reply";
 
 export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const { toast } = useToast();
   
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     // Initialize Speech Recognition
@@ -61,6 +63,15 @@ export default function VoiceChatbot() {
         variant: "destructive",
         title: "Not Supported",
         description: "Speech recognition is not supported in your browser.",
+      });
+      return;
+    }
+
+    // Prevent recording while AI is speaking
+    if (isAiSpeaking) {
+      toast({
+        title: "AI is speaking",
+        description: "Please wait for the AI to finish speaking.",
       });
       return;
     }
@@ -115,6 +126,12 @@ export default function VoiceChatbot() {
 
   const playAudio = async (base64Audio: string) => {
     try {
+      // Stop any currently playing audio
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+
       // Decode base64 to array buffer
       const binaryString = atob(base64Audio);
       const bytes = new Uint8Array(binaryString.length);
@@ -127,13 +144,31 @@ export default function VoiceChatbot() {
       const audioUrl = URL.createObjectURL(blob);
       
       const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+      
+      // Disable recording while AI is speaking
+      setIsAiSpeaking(true);
+      if (isRecording && recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsRecording(false);
+      }
+
       await audio.play();
 
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        setIsAiSpeaking(false);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        setIsAiSpeaking(false);
       };
     } catch (error) {
       console.error('Audio playback error:', error);
+      setIsAiSpeaking(false);
       toast({
         variant: "destructive",
         title: "Audio Error",
@@ -161,8 +196,11 @@ export default function VoiceChatbot() {
         )}
         <Button
           onClick={toggleRecording}
+          disabled={isAiSpeaking}
           className={`w-24 h-24 rounded-full shadow-2xl transition-all duration-300 ${
-            isRecording 
+            isAiSpeaking
+              ? "bg-muted cursor-not-allowed opacity-50"
+              : isRecording 
               ? "bg-destructive hover:bg-destructive/90 scale-110" 
               : "bg-gradient-to-br from-primary to-accent hover:scale-105"
           }`}
@@ -180,7 +218,11 @@ export default function VoiceChatbot() {
         </Button>
       </div>
       <p className="text-center mt-6 text-lg text-muted-foreground font-medium">
-        {isRecording ? "Listening... Tap to stop" : "Tap the microphone to speak"}
+        {isAiSpeaking 
+          ? "AI is speaking..." 
+          : isRecording 
+          ? "Listening... Tap to stop" 
+          : "Tap the microphone to speak"}
       </p>
     </div>
   );
