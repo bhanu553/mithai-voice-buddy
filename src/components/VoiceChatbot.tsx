@@ -245,23 +245,36 @@ export default function VoiceChatbot() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted flex flex-col items-center justify-center">
-      {/* Header */}
-      <div className="text-center px-4 mb-16">
-        <h1 className="text-5xl md:text-6xl font-bold text-foreground mb-4">
-          Talk to Anand Mithaiwala 🍬
-        </h1>
-        <p className="text-muted-foreground text-xl">
-          Your friendly voice assistant for sweet conversations
-        </p>
-      </div>
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center relative"
+      style={{
+        backgroundImage: 'url(/sweetshop-bg.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      }}
+    >
+      {/* Overlay for better readability */}
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"></div>
+      
+      {/* Glassmorphism Container */}
+      <div className="relative z-10 flex flex-col items-center justify-center">
+        {/* Header with Glass Effect */}
+        <div className="text-center px-8 py-6 mb-16 rounded-3xl backdrop-blur-xl bg-white/10 border border-white/20 shadow-2xl">
+          <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 drop-shadow-lg">
+            Talk to Anand Mithaiwala 🍬
+          </h1>
+          <p className="text-white/90 text-xl drop-shadow-md">
+            Your friendly voice assistant for sweet conversations
+          </p>
+        </div>
 
-      {/* Microphone Button */}
-      <div className="relative">
-        {(isRecording || isAiSpeaking) && (
-          <div className="absolute inset-0 rounded-full bg-primary/30 animate-pulse"></div>
-        )}
-        <Button
+        {/* Microphone Button with Glass Effect */}
+        <div className="relative p-8 rounded-full backdrop-blur-2xl bg-white/10 border border-white/30 shadow-2xl">
+          {(isRecording || isAiSpeaking) && (
+            <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse"></div>
+          )}
+          <Button
           onClick={toggleRecording}
           disabled={isResponding}
           className={`w-24 h-24 rounded-full shadow-2xl transition-all duration-300 ${
@@ -291,16 +304,21 @@ export default function VoiceChatbot() {
             <Mic className="w-12 h-12 text-white" />
           )}
         </Button>
+        </div>
+        
+        {/* Status Text with Glass Effect */}
+        <div className="mt-8 px-6 py-3 rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 shadow-xl">
+          <p className="text-center text-lg text-white font-medium drop-shadow-md">
+            {isAiSpeaking 
+              ? "🔊 AI is speaking... (tap to interrupt)" 
+              : isResponding
+              ? "⏳ Getting response..."
+              : isRecording 
+              ? "🎤 Listening... Tap to stop" 
+              : "Tap the microphone to speak"}
+          </p>
+        </div>
       </div>
-      <p className="text-center mt-6 text-lg text-muted-foreground font-medium">
-        {isAiSpeaking 
-          ? "🔊 AI is speaking... (tap to interrupt)" 
-          : isResponding
-          ? "⏳ Getting response..."
-          : isRecording 
-          ? "🎤 Listening... Tap to stop" 
-          : "Tap the microphone to speak"}
-      </p>
     </div>
   );
 }
