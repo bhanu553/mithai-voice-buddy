@@ -58,6 +58,21 @@ export default function VoiceChatbot() {
     };
   }, []);
 
+  const stopAiAudio = () => {
+    if (currentAudioRef.current) {
+      console.log('🛑 User interrupted AI - stopping audio');
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      const audioUrl = currentAudioRef.current.src;
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+      currentAudioRef.current = null;
+      setIsAiSpeaking(false);
+      console.log('✅ AI audio stopped - mic re-enabled');
+    }
+  };
+
   const toggleRecording = () => {
     if (!recognitionRef.current) {
       toast({
@@ -68,19 +83,19 @@ export default function VoiceChatbot() {
       return;
     }
 
-    // Prevent recording while AI is speaking
+    // If AI is speaking, stop it and enable mic
     if (isAiSpeaking) {
-      toast({
-        title: "AI is speaking",
-        description: "Please wait for the AI to finish speaking.",
-      });
+      stopAiAudio();
+      // Don't start recording immediately, let user click again
       return;
     }
 
     if (isRecording) {
+      console.log('🎤 User stopped recording');
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
+      console.log('🎤 User started recording');
       recognitionRef.current.start();
       setIsRecording(true);
     }
@@ -244,10 +259,10 @@ export default function VoiceChatbot() {
         )}
         <Button
           onClick={toggleRecording}
-          disabled={isAiSpeaking || isResponding}
+          disabled={isResponding}
           className={`w-24 h-24 rounded-full shadow-2xl transition-all duration-300 ${
             isAiSpeaking
-              ? "bg-gradient-to-br from-green-500 to-green-600 cursor-not-allowed"
+              ? "bg-gradient-to-br from-green-500 to-green-600 hover:bg-gradient-to-br hover:from-green-600 hover:to-green-700"
               : isResponding
               ? "bg-gradient-to-br from-yellow-500 to-orange-500 cursor-not-allowed animate-pulse"
               : isRecording 
@@ -275,7 +290,7 @@ export default function VoiceChatbot() {
       </div>
       <p className="text-center mt-6 text-lg text-muted-foreground font-medium">
         {isAiSpeaking 
-          ? "🔊 AI is speaking..." 
+          ? "🔊 AI is speaking... (tap to interrupt)" 
           : isResponding
           ? "⏳ Getting response..."
           : isRecording 
