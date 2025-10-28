@@ -78,10 +78,13 @@ export default function VoiceChatbot() {
       return;
     }
 
-    // If AI is speaking, stop it and enable mic
+    // If AI is speaking, stop it and start recording immediately
     if (isAiSpeaking) {
       stopAiAudio();
-      // Don't start recording immediately, let user click again
+      // Immediately start recording after stopping AI
+      console.log('🎤 User interrupted AI - starting recording');
+      recognitionRef.current.start();
+      setIsRecording(true);
       return;
     }
 
