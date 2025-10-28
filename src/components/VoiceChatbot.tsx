@@ -3,8 +3,8 @@ import { Mic, MicOff, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
-const TEST_URL = "https://space432.app.n8n.cloud/webhook-test/voice-reply";
-const PRODUCTION_URL = "https://space432.app.n8n.cloud/webhook/voice-reply";
+const TEST_URL = "https://spacecadet4.app.n8n.cloud/webhook-test/voice-reply";
+const PRODUCTION_URL = "https://spacecadet4.app.n8n.cloud/webhook/voice-reply";
 
 export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
