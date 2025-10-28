@@ -7,7 +7,6 @@ const TEST_URL = "https://spacecadet4.app.n8n.cloud/webhook-test/voice-reply";
 const PRODUCTION_URL = "https://spacecadet4.app.n8n.cloud/webhook/voice-reply";
 
 export default function VoiceChatbot() {
-  const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
@@ -15,12 +14,7 @@ export default function VoiceChatbot() {
   const { toast } = useToast();
   
   const recognitionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const vadIntervalRef = useRef<number | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const silenceTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     // Initialize Speech Recognition
@@ -38,106 +32,49 @@ export default function VoiceChatbot() {
         
         // Send to backend
         await sendToBackend(transcript);
-        
-        // Return to listening mode after processing
-        setTimeout(() => {
-          if (isEnabled && !isAiSpeaking) {
-            setIsListening(true);
-          }
-        }, 500);
       };
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
-        // Return to listening mode
+        // Restart listening if enabled
         if (isEnabled && !isAiSpeaking) {
-          setTimeout(() => setIsListening(true), 500);
+          setTimeout(() => startListening(), 500);
         }
       };
 
       recognitionRef.current.onend = () => {
         console.log('🎤 Recognition ended');
         setIsRecording(false);
+        // Auto-restart listening if enabled and AI is not speaking
+        if (isEnabled && !isAiSpeaking && !isResponding) {
+          setTimeout(() => startListening(), 300);
+        }
       };
     }
 
-    // Initialize Audio Context
-    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-
     return () => {
-      stopListening();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
       }
     };
-  }, []);
+  }, [isEnabled, isAiSpeaking, isResponding]);
 
-  // Voice Activity Detection using volume threshold
-  const startVAD = async () => {
+  const startListening = () => {
+    if (!recognitionRef.current || isRecording || isAiSpeaking || isResponding) return;
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
-
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      const analyser = audioContextRef.current.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-
-      // VAD loop - check for voice activity
-      vadIntervalRef.current = window.setInterval(() => {
-        if (!isListening || isRecording || isAiSpeaking || isResponding) return;
-
-        analyser.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-
-        // Detect speech when volume exceeds threshold
-        const SPEECH_THRESHOLD = 30; // Adjust based on environment
-        if (average > SPEECH_THRESHOLD) {
-          console.log('🎤 Speech detected, starting recording...');
-          setIsListening(false);
-          setIsRecording(true);
-          if (recognitionRef.current) {
-            recognitionRef.current.start();
-          }
-        }
-      }, 100); // Check every 100ms
-
-      console.log('✅ VAD started - continuous listening active');
+      console.log('🎤 Starting speech recognition...');
+      setIsRecording(true);
+      recognitionRef.current.start();
     } catch (error) {
-      console.error('❌ Microphone access denied:', error);
+      console.error('Error starting recognition:', error);
+      setIsRecording(false);
     }
-  };
-
-  const stopListening = () => {
-    if (vadIntervalRef.current) {
-      clearInterval(vadIntervalRef.current);
-      vadIntervalRef.current = null;
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(track => track.stop());
-      micStreamRef.current = null;
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {
-        // Ignore if already stopped
-      }
-    }
-    analyserRef.current = null;
-    setIsListening(false);
-    setIsRecording(false);
-    console.log('🛑 Continuous listening stopped');
   };
 
   const stopAiAudio = () => {
@@ -159,23 +96,34 @@ export default function VoiceChatbot() {
     }
   };
 
-  const toggleAssistant = async () => {
+  const toggleAssistant = () => {
     if (!recognitionRef.current) {
       console.error('Speech recognition not supported in this browser');
       return;
     }
 
+    if (isAiSpeaking) {
+      // If AI is speaking, stop it and start listening
+      stopAiAudio();
+      setTimeout(() => startListening(), 100);
+      return;
+    }
+
     if (isEnabled) {
       // Turn OFF assistant
-      stopListening();
       setIsEnabled(false);
+      setIsRecording(false);
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Ignore
+      }
       console.log('🛑 Assistant disabled');
     } else {
-      // Turn ON assistant
+      // Turn ON assistant and start listening
       setIsEnabled(true);
-      setIsListening(true);
-      await startVAD();
-      console.log('✅ Assistant enabled - always listening mode');
+      setTimeout(() => startListening(), 100);
+      console.log('✅ Assistant enabled');
     }
   };
 
@@ -292,7 +240,7 @@ export default function VoiceChatbot() {
         
         // Return to listening mode automatically
         if (isEnabled) {
-          setTimeout(() => setIsListening(true), 500);
+          setTimeout(() => startListening(), 500);
         }
       };
 
@@ -335,7 +283,7 @@ export default function VoiceChatbot() {
 
         {/* Microphone Button with Glass Effect */}
         <div className="relative p-8 rounded-full backdrop-blur-2xl bg-white/10 border border-white/30 shadow-2xl">
-          {(isListening || isRecording || isAiSpeaking) && (
+          {(isRecording || isAiSpeaking) && (
             <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse"></div>
           )}
           <Button
@@ -347,7 +295,7 @@ export default function VoiceChatbot() {
               ? "bg-gradient-to-br from-yellow-500 to-orange-500 animate-pulse scale-105"
               : isRecording 
               ? "bg-gradient-to-br from-red-500 to-red-600 scale-110 animate-pulse" 
-              : isListening
+              : isEnabled
               ? "bg-gradient-to-br from-blue-500 to-blue-600 hover:scale-105"
               : "bg-gradient-to-br from-gray-500 to-gray-600 hover:scale-105"
           }`}
@@ -356,7 +304,7 @@ export default function VoiceChatbot() {
               ? "0 0 40px rgba(34, 197, 94, 0.6)"
               : isRecording 
               ? "0 0 40px rgba(239, 68, 68, 0.6)" 
-              : isListening
+              : isEnabled
               ? "0 0 40px rgba(59, 130, 246, 0.6)"
               : "0 0 20px rgba(107, 114, 128, 0.4)"
           }}
@@ -367,7 +315,7 @@ export default function VoiceChatbot() {
             <Mic className="w-12 h-12 text-white animate-pulse" />
           ) : isRecording ? (
             <Mic className="w-12 h-12 text-white animate-pulse" />
-          ) : isListening ? (
+          ) : isEnabled ? (
             <Mic className="w-12 h-12 text-white" />
           ) : (
             <MicOff className="w-12 h-12 text-white" />
@@ -383,9 +331,9 @@ export default function VoiceChatbot() {
               : isResponding
               ? "⏳ Processing..."
               : isRecording 
-              ? "🎤 Recording..." 
-              : isListening
-              ? "👂 Listening..."
+              ? "🎤 Listening..." 
+              : isEnabled
+              ? "👂 Ready to listen..."
               : "Tap to activate assistant"}
           </p>
         </div>
