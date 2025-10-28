@@ -36,11 +36,6 @@ export default function VoiceChatbot() {
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
-        toast({
-          variant: "destructive",
-          title: "Speech Recognition Error",
-          description: "Could not recognize speech. Please try again.",
-        });
       };
 
       recognitionRef.current.onend = () => {
@@ -79,11 +74,7 @@ export default function VoiceChatbot() {
 
   const toggleRecording = () => {
     if (!recognitionRef.current) {
-      toast({
-        variant: "destructive",
-        title: "Not Supported",
-        description: "Speech recognition is not supported in your browser.",
-      });
+      console.error('Speech recognition not supported in this browser');
       return;
     }
 
@@ -173,11 +164,6 @@ export default function VoiceChatbot() {
 
     } catch (error) {
       console.error('❌ Backend error:', error);
-      toast({
-        variant: "destructive",
-        title: "Connection Error",
-        description: "Could not reach the assistant. Please try again.",
-      });
     } finally {
       setIsResponding(false);
     }
@@ -227,20 +213,10 @@ export default function VoiceChatbot() {
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         setIsAiSpeaking(false);
-        toast({
-          variant: "destructive",
-          title: "Audio Error",
-          description: "Could not play audio response.",
-        });
       };
     } catch (error) {
       console.error('❌ Audio playback exception:', error);
       setIsAiSpeaking(false);
-      toast({
-        variant: "destructive",
-        title: "Audio Error",
-        description: "Could not play audio response.",
-      });
     }
   };
 
