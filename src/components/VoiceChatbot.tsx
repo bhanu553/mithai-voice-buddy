@@ -39,11 +39,8 @@ export default function VoiceChatbot() {
           console.log('🛑 User interrupted AI - stopping playback');
           pendingInterruptionRef.current = true;
           stopAiAudio();
-          // Wait briefly for audio to stop, then reinitialize and process
-          setTimeout(async () => {
-            console.log('🔄 Reinitializing mic after interruption');
-            await sendToBackend(transcript);
-          }, 100);
+          // Process immediately - mic auto-stopped after recognition
+          await sendToBackend(transcript);
         } else {
           // Normal flow - send immediately
           await sendToBackend(transcript);
@@ -65,8 +62,8 @@ export default function VoiceChatbot() {
       recognitionRef.current.onend = () => {
         console.log('🎤 Recognition ended');
         setIsRecording(false);
-        // Auto-restart listening if enabled and AI is not speaking
-        if (isEnabled && !isAiSpeaking && !isResponding) {
+        // Auto-restart listening if enabled, AI not speaking, and not handling interruption
+        if (isEnabled && !isAiSpeaking && !isResponding && !pendingInterruptionRef.current) {
           setTimeout(() => startListening(), 300);
         }
       };
@@ -264,17 +261,7 @@ export default function VoiceChatbot() {
       const audio = new Audio(audioUrl);
       currentAudioRef.current = audio;
       
-      // Stop mic during AI speech to prevent feedback/overlap
-      if (isRecording && recognitionRef.current) {
-        console.log('🎤 Stopping mic during AI playback');
-        try {
-          recognitionRef.current.stop();
-          setIsRecording(false);
-        } catch (e) {
-          console.error('⚠️ Error stopping recognition:', e);
-        }
-      }
-      
+      // Keep mic active during AI speech to allow interruptions
       setIsAiSpeaking(true);
       setIsResponding(false);
 
