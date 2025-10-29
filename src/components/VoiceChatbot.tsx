@@ -10,7 +10,7 @@ export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
-  const [isEnabled, setIsEnabled] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(true);
   const { toast } = useToast();
   
   const recognitionRef = useRef<any>(null);
@@ -24,6 +24,9 @@ export default function VoiceChatbot() {
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
+      
+      // Auto-start listening on mount
+      setTimeout(() => startListening(), 500);
 
       recognitionRef.current.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
@@ -296,7 +299,10 @@ export default function VoiceChatbot() {
             <div className="absolute inset-0 rounded-full border-4 border-yellow-500/50 animate-spin" style={{ animationDuration: '2s' }}></div>
           )}
           {isEnabled && !isRecording && !isResponding && !isAiSpeaking && (
-            <div className="absolute inset-0 rounded-full bg-blue-500/20" style={{ animation: 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
+            <>
+              <div className="absolute inset-0 rounded-full bg-blue-500/30 animate-pulse"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-blue-400/50 animate-ping" style={{ animationDuration: '2s' }}></div>
+            </>
           )}
           
           <Button
