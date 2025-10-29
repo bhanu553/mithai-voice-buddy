@@ -10,7 +10,7 @@ export default function VoiceChatbot() {
   const [isRecording, setIsRecording] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
-  const [isEnabled, setIsEnabled] = useState(true);
+  const [isEnabled, setIsEnabled] = useState(false);
   const { toast } = useToast();
   
   const recognitionRef = useRef<any>(null);
@@ -24,13 +24,6 @@ export default function VoiceChatbot() {
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
-
-      // Auto-start listening on mount
-      setTimeout(() => {
-        if (isEnabled) {
-          startListening();
-        }
-      }, 500);
 
       recognitionRef.current.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
