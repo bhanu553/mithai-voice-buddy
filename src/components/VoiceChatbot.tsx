@@ -25,6 +25,13 @@ export default function VoiceChatbot() {
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
 
+      // Auto-start listening on mount
+      setTimeout(() => {
+        if (isEnabled) {
+          startListening();
+        }
+      }, 500);
+
       recognitionRef.current.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
         console.log('✅ Speech recognized:', transcript);
