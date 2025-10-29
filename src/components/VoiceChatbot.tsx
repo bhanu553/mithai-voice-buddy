@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Volume2 } from "lucide-react";
+import { Mic, MicOff, Volume2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,10 +11,13 @@ export default function VoiceChatbot() {
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
   const [isEnabled, setIsEnabled] = useState(false);
+  const [userTranscript, setUserTranscript] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
   const { toast } = useToast();
   
   const recognitionRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingInterruptionRef = useRef(false);
 
   useEffect(() => {
     // Initialize Speech Recognition
@@ -29,15 +32,25 @@ export default function VoiceChatbot() {
         const transcript = event.results[0][0].transcript;
         console.log('✅ Speech recognized:', transcript);
         setIsRecording(false);
+        setUserTranscript(transcript);
         
-        // If AI is speaking, interrupt it first
+        // If AI is speaking, mark for interruption and stop audio
         if (isAiSpeaking) {
-          console.log('🛑 User spoke during AI response - interrupting AI');
+          console.log('🛑 User interrupted AI - stopping playback');
+          pendingInterruptionRef.current = true;
           stopAiAudio();
+          // Wait briefly for audio to stop, then reinitialize and process
+          setTimeout(async () => {
+            console.log('🔄 Reinitializing mic after interruption');
+            await sendToBackend(transcript);
+          }, 100);
+        } else {
+          // Normal flow - send immediately
+          await sendToBackend(transcript);
         }
         
-        // Send to backend
-        await sendToBackend(transcript);
+        // Clear transcript after 3 seconds
+        setTimeout(() => setUserTranscript(""), 3000);
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -71,7 +84,13 @@ export default function VoiceChatbot() {
   }, [isEnabled, isAiSpeaking, isResponding]);
 
   const startListening = () => {
-    if (!recognitionRef.current || isAiSpeaking || isResponding) return;
+    if (!recognitionRef.current) return;
+    
+    // Don't start if AI is speaking or system is processing
+    if (isAiSpeaking || isResponding) {
+      console.log('⚠️ Cannot start - AI speaking or processing');
+      return;
+    }
     
     // Prevent starting if already recording
     if (isRecording) {
@@ -91,7 +110,7 @@ export default function VoiceChatbot() {
 
   const stopAiAudio = () => {
     if (currentAudioRef.current) {
-      console.log('🛑 User interrupted AI - stopping audio');
+      console.log('🛑 Stopping AI audio');
       try {
         currentAudioRef.current.pause();
         currentAudioRef.current.currentTime = 0;
@@ -104,7 +123,18 @@ export default function VoiceChatbot() {
       }
       currentAudioRef.current = null;
       setIsAiSpeaking(false);
-      console.log('✅ AI audio stopped - mic re-enabled');
+      setAiResponse("");
+      
+      // Stop mic if it's running
+      if (isRecording && recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        } catch (e) {
+          console.error('⚠️ Error stopping recognition:', e);
+        }
+      }
+      console.log('✅ AI audio stopped cleanly');
     }
   };
 
@@ -148,6 +178,7 @@ export default function VoiceChatbot() {
 
     console.log('📤 Sending to backend:', { text: userText, url: PRODUCTION_URL });
     setIsResponding(true);
+    setAiResponse("Processing...");
 
     try {
       const startTime = Date.now();
@@ -189,6 +220,7 @@ export default function VoiceChatbot() {
             size: audioBlob.size, 
             type: audioBlob.type 
           });
+          setAiResponse("Speaking...");
           await playAudioBlob(audioBlob);
         } else {
           console.warn('⚠️ Expected audio response but got:', contentType);
@@ -232,7 +264,17 @@ export default function VoiceChatbot() {
       const audio = new Audio(audioUrl);
       currentAudioRef.current = audio;
       
-      // AI is speaking - keep mic active for interruptions
+      // Stop mic during AI speech to prevent feedback/overlap
+      if (isRecording && recognitionRef.current) {
+        console.log('🎤 Stopping mic during AI playback');
+        try {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        } catch (e) {
+          console.error('⚠️ Error stopping recognition:', e);
+        }
+      }
+      
       setIsAiSpeaking(true);
       setIsResponding(false);
 
@@ -244,12 +286,19 @@ export default function VoiceChatbot() {
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         setIsAiSpeaking(false);
-        console.log('🎤 Returning to listening mode');
+        setAiResponse("");
+        console.log('🎤 Audio complete - reinitializing mic');
         
-        // Return to listening mode automatically
-        if (isEnabled) {
-          setTimeout(() => startListening(), 500);
+        // Clean reinitialization: single activation after AI finishes
+        if (isEnabled && !pendingInterruptionRef.current) {
+          setTimeout(() => {
+            console.log('🔄 Reactivating mic after AI speech');
+            startListening();
+          }, 500);
         }
+        
+        // Reset interruption flag
+        pendingInterruptionRef.current = false;
       };
 
       audio.onerror = (e) => {
@@ -257,10 +306,22 @@ export default function VoiceChatbot() {
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         setIsAiSpeaking(false);
+        setAiResponse("");
+        
+        // Reinitialize mic after error
+        if (isEnabled) {
+          setTimeout(() => startListening(), 500);
+        }
       };
     } catch (error) {
       console.error('❌ Audio playback exception:', error);
       setIsAiSpeaking(false);
+      setAiResponse("");
+      
+      // Reinitialize mic after exception
+      if (isEnabled) {
+        setTimeout(() => startListening(), 500);
+      }
     }
   };
 
@@ -298,7 +359,7 @@ export default function VoiceChatbot() {
           {isResponding && (
             <div className="absolute inset-0 rounded-full border-4 border-yellow-500/50 animate-spin" style={{ animationDuration: '2s' }}></div>
           )}
-          {isEnabled && !isResponding && !isAiSpeaking && (
+          {isRecording && !isResponding && !isAiSpeaking && (
             <>
               <div className="absolute inset-0 rounded-full bg-blue-500/30 animate-pulse"></div>
               <div className="absolute inset-0 rounded-full border-4 border-blue-400/50 animate-ping" style={{ animationDuration: '2s' }}></div>
@@ -312,8 +373,10 @@ export default function VoiceChatbot() {
                 ? "bg-gradient-to-br from-green-500 to-green-700 scale-110"
                 : isResponding
                 ? "bg-gradient-to-br from-yellow-400 to-orange-600 scale-105"
-                : isEnabled
+                : isRecording
                 ? "bg-gradient-to-br from-blue-500 to-blue-700 hover:scale-105"
+                : isEnabled
+                ? "bg-gradient-to-br from-gray-600 to-gray-800 hover:scale-105"
                 : "bg-gradient-to-br from-gray-500 to-gray-700 hover:scale-105"
             }`}
             style={{
@@ -321,7 +384,7 @@ export default function VoiceChatbot() {
                 ? "0 0 50px rgba(34, 197, 94, 0.8), 0 0 100px rgba(34, 197, 94, 0.4)"
                 : isResponding
                 ? "0 0 50px rgba(251, 191, 36, 0.8), 0 0 100px rgba(251, 191, 36, 0.4)"
-                : isEnabled
+                : isRecording
                 ? "0 0 40px rgba(59, 130, 246, 0.6), 0 0 80px rgba(59, 130, 246, 0.3)"
                 : "0 0 20px rgba(107, 114, 128, 0.4)"
             }}
@@ -329,9 +392,11 @@ export default function VoiceChatbot() {
             {isAiSpeaking ? (
               <Volume2 className="w-12 h-12 text-white animate-pulse" />
             ) : isResponding ? (
-              <Mic className="w-12 h-12 text-white" style={{ animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+              <Loader2 className="w-12 h-12 text-white animate-spin" />
+            ) : isRecording ? (
+              <Mic className="w-12 h-12 text-white animate-pulse" />
             ) : isEnabled ? (
-              <Mic className="w-12 h-12 text-white" />
+              <Mic className="w-12 h-12 text-white/70" />
             ) : (
               <MicOff className="w-12 h-12 text-white" />
             )}
@@ -347,11 +412,30 @@ export default function VoiceChatbot() {
               ? "🔊 AI Speaking - Click to interrupt" 
               : isResponding
               ? "⏳ Processing your request..."
+              : isRecording
+              ? "👂 Listening..."
               : isEnabled
-              ? "👂 Ready - Start speaking"
+              ? "Ready - Start speaking"
               : "Tap to activate voice assistant"}
           </p>
         </div>
+
+        {/* Live Transcript Feedback */}
+        {userTranscript && (
+          <div className="mt-4 px-6 py-3 rounded-2xl backdrop-blur-xl bg-blue-500/20 border border-blue-400/30 shadow-xl animate-fade-in">
+            <p className="text-center text-sm text-white/90 drop-shadow-md">
+              💬 You said: "{userTranscript}"
+            </p>
+          </div>
+        )}
+        
+        {aiResponse && (
+          <div className="mt-4 px-6 py-3 rounded-2xl backdrop-blur-xl bg-green-500/20 border border-green-400/30 shadow-xl animate-fade-in">
+            <p className="text-center text-sm text-white/90 drop-shadow-md">
+              🤖 AI: {aiResponse}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
