@@ -30,6 +30,12 @@ export default function VoiceChatbot() {
         console.log('✅ Speech recognized:', transcript);
         setIsRecording(false);
         
+        // If AI is speaking, interrupt it first
+        if (isAiSpeaking) {
+          console.log('🛑 User spoke during AI response - interrupting AI');
+          stopAiAudio();
+        }
+        
         // Send to backend
         await sendToBackend(transcript);
       };
@@ -226,15 +232,9 @@ export default function VoiceChatbot() {
       const audio = new Audio(audioUrl);
       currentAudioRef.current = audio;
       
-      // Disable recording while AI is speaking
+      // AI is speaking - keep mic active for interruptions
       setIsAiSpeaking(true);
       setIsResponding(false);
-      
-      if (isRecording && recognitionRef.current) {
-        console.log('🎤 Stopping microphone input during playback');
-        recognitionRef.current.stop();
-        setIsRecording(false);
-      }
 
       console.log('▶️ Audio playback started at:', new Date().toISOString());
       await audio.play();
