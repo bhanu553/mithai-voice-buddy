@@ -106,6 +106,7 @@ export default function VoiceChatbot() {
       // If AI is speaking or processing, interrupt and start listening immediately
       stopAiAudio();
       setIsResponding(false);
+      setIsEnabled(true); // Ensure assistant stays enabled
       setTimeout(() => startListening(), 100);
       return;
     }
