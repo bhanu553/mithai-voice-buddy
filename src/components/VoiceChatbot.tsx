@@ -102,9 +102,10 @@ export default function VoiceChatbot() {
       return;
     }
 
-    if (isAiSpeaking) {
-      // If AI is speaking, stop it and start listening
+    if (isAiSpeaking || isResponding) {
+      // If AI is speaking or processing, interrupt and start listening immediately
       stopAiAudio();
+      setIsResponding(false);
       setTimeout(() => startListening(), 100);
       return;
     }
@@ -283,58 +284,73 @@ export default function VoiceChatbot() {
 
         {/* Microphone Button with Glass Effect */}
         <div className="relative p-8 rounded-full backdrop-blur-2xl bg-white/10 border border-white/30 shadow-2xl">
-          {(isRecording || isAiSpeaking) && (
-            <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse"></div>
+          {/* Outer ring animations for different states */}
+          {isAiSpeaking && (
+            <div className="absolute inset-0 rounded-full bg-green-500/30 animate-ping"></div>
           )}
+          {isRecording && (
+            <div className="absolute inset-0 rounded-full bg-red-500/30 animate-pulse"></div>
+          )}
+          {isResponding && (
+            <div className="absolute inset-0 rounded-full border-4 border-yellow-500/50 animate-spin" style={{ animationDuration: '2s' }}></div>
+          )}
+          {isEnabled && !isRecording && !isResponding && !isAiSpeaking && (
+            <div className="absolute inset-0 rounded-full bg-blue-500/20" style={{ animation: 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}></div>
+          )}
+          
           <Button
-          onClick={toggleAssistant}
-          className={`w-24 h-24 rounded-full shadow-2xl transition-all duration-300 ${
-            isAiSpeaking
-              ? "bg-gradient-to-br from-green-500 to-green-600 hover:bg-gradient-to-br hover:from-green-600 hover:to-green-700 scale-110"
-              : isResponding
-              ? "bg-gradient-to-br from-yellow-500 to-orange-500 animate-pulse scale-105"
-              : isRecording 
-              ? "bg-gradient-to-br from-red-500 to-red-600 scale-110 animate-pulse" 
-              : isEnabled
-              ? "bg-gradient-to-br from-blue-500 to-blue-600 hover:scale-105"
-              : "bg-gradient-to-br from-gray-500 to-gray-600 hover:scale-105"
-          }`}
-          style={{
-            boxShadow: isAiSpeaking
-              ? "0 0 40px rgba(34, 197, 94, 0.6)"
-              : isRecording 
-              ? "0 0 40px rgba(239, 68, 68, 0.6)" 
-              : isEnabled
-              ? "0 0 40px rgba(59, 130, 246, 0.6)"
-              : "0 0 20px rgba(107, 114, 128, 0.4)"
-          }}
-        >
-          {isAiSpeaking ? (
-            <Volume2 className="w-12 h-12 text-white animate-pulse" />
-          ) : isResponding ? (
-            <Mic className="w-12 h-12 text-white animate-pulse" />
-          ) : isRecording ? (
-            <Mic className="w-12 h-12 text-white animate-pulse" />
-          ) : isEnabled ? (
-            <Mic className="w-12 h-12 text-white" />
-          ) : (
-            <MicOff className="w-12 h-12 text-white" />
-          )}
-        </Button>
+            onClick={toggleAssistant}
+            className={`w-24 h-24 rounded-full shadow-2xl transition-all duration-500 relative z-10 ${
+              isAiSpeaking
+                ? "bg-gradient-to-br from-green-500 to-green-700 scale-110"
+                : isResponding
+                ? "bg-gradient-to-br from-yellow-400 to-orange-600 scale-105"
+                : isRecording 
+                ? "bg-gradient-to-br from-red-500 to-red-700 scale-110" 
+                : isEnabled
+                ? "bg-gradient-to-br from-blue-500 to-blue-700 hover:scale-105"
+                : "bg-gradient-to-br from-gray-500 to-gray-700 hover:scale-105"
+            }`}
+            style={{
+              boxShadow: isAiSpeaking
+                ? "0 0 50px rgba(34, 197, 94, 0.8), 0 0 100px rgba(34, 197, 94, 0.4)"
+                : isResponding
+                ? "0 0 50px rgba(251, 191, 36, 0.8), 0 0 100px rgba(251, 191, 36, 0.4)"
+                : isRecording 
+                ? "0 0 50px rgba(239, 68, 68, 0.8), 0 0 100px rgba(239, 68, 68, 0.4)" 
+                : isEnabled
+                ? "0 0 40px rgba(59, 130, 246, 0.6), 0 0 80px rgba(59, 130, 246, 0.3)"
+                : "0 0 20px rgba(107, 114, 128, 0.4)"
+            }}
+          >
+            {isAiSpeaking ? (
+              <Volume2 className="w-12 h-12 text-white animate-pulse" />
+            ) : isResponding ? (
+              <Mic className="w-12 h-12 text-white" style={{ animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+            ) : isRecording ? (
+              <Mic className="w-12 h-12 text-white animate-pulse" />
+            ) : isEnabled ? (
+              <Mic className="w-12 h-12 text-white" />
+            ) : (
+              <MicOff className="w-12 h-12 text-white" />
+            )}
+          </Button>
         </div>
         
         {/* Status Text with Glass Effect */}
         <div className="mt-8 px-6 py-3 rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 shadow-xl">
-          <p className="text-center text-lg text-white font-medium drop-shadow-md">
+          <p className={`text-center text-lg text-white font-medium drop-shadow-md transition-all duration-300 ${
+            isAiSpeaking || isResponding || isRecording ? 'animate-pulse' : ''
+          }`}>
             {isAiSpeaking 
-              ? "🔊 Speaking..." 
+              ? "🔊 AI Speaking - Click to interrupt" 
               : isResponding
-              ? "⏳ Processing..."
+              ? "⏳ Processing your request..."
               : isRecording 
-              ? "🎤 Listening..." 
+              ? "🎤 Listening to you..." 
               : isEnabled
-              ? "👂 Ready to listen..."
-              : "Tap to activate assistant"}
+              ? "👂 Ready - Start speaking anytime"
+              : "Tap to activate voice assistant"}
           </p>
         </div>
       </div>
