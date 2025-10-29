@@ -24,9 +24,6 @@ export default function VoiceChatbot() {
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
-      
-      // Auto-start listening on mount
-      setTimeout(() => startListening(), 500);
 
       recognitionRef.current.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
@@ -68,7 +65,13 @@ export default function VoiceChatbot() {
   }, [isEnabled, isAiSpeaking, isResponding]);
 
   const startListening = () => {
-    if (!recognitionRef.current || isRecording || isAiSpeaking || isResponding) return;
+    if (!recognitionRef.current || isAiSpeaking || isResponding) return;
+    
+    // Prevent starting if already recording
+    if (isRecording) {
+      console.log('⚠️ Already recording, skipping start');
+      return;
+    }
     
     try {
       console.log('🎤 Starting speech recognition...');
@@ -292,13 +295,10 @@ export default function VoiceChatbot() {
           {isAiSpeaking && (
             <div className="absolute inset-0 rounded-full bg-green-500/30 animate-ping"></div>
           )}
-          {isRecording && (
-            <div className="absolute inset-0 rounded-full bg-red-500/30 animate-pulse"></div>
-          )}
           {isResponding && (
             <div className="absolute inset-0 rounded-full border-4 border-yellow-500/50 animate-spin" style={{ animationDuration: '2s' }}></div>
           )}
-          {isEnabled && !isRecording && !isResponding && !isAiSpeaking && (
+          {isEnabled && !isResponding && !isAiSpeaking && (
             <>
               <div className="absolute inset-0 rounded-full bg-blue-500/30 animate-pulse"></div>
               <div className="absolute inset-0 rounded-full border-4 border-blue-400/50 animate-ping" style={{ animationDuration: '2s' }}></div>
@@ -312,8 +312,6 @@ export default function VoiceChatbot() {
                 ? "bg-gradient-to-br from-green-500 to-green-700 scale-110"
                 : isResponding
                 ? "bg-gradient-to-br from-yellow-400 to-orange-600 scale-105"
-                : isRecording 
-                ? "bg-gradient-to-br from-red-500 to-red-700 scale-110" 
                 : isEnabled
                 ? "bg-gradient-to-br from-blue-500 to-blue-700 hover:scale-105"
                 : "bg-gradient-to-br from-gray-500 to-gray-700 hover:scale-105"
@@ -323,8 +321,6 @@ export default function VoiceChatbot() {
                 ? "0 0 50px rgba(34, 197, 94, 0.8), 0 0 100px rgba(34, 197, 94, 0.4)"
                 : isResponding
                 ? "0 0 50px rgba(251, 191, 36, 0.8), 0 0 100px rgba(251, 191, 36, 0.4)"
-                : isRecording 
-                ? "0 0 50px rgba(239, 68, 68, 0.8), 0 0 100px rgba(239, 68, 68, 0.4)" 
                 : isEnabled
                 ? "0 0 40px rgba(59, 130, 246, 0.6), 0 0 80px rgba(59, 130, 246, 0.3)"
                 : "0 0 20px rgba(107, 114, 128, 0.4)"
@@ -334,8 +330,6 @@ export default function VoiceChatbot() {
               <Volume2 className="w-12 h-12 text-white animate-pulse" />
             ) : isResponding ? (
               <Mic className="w-12 h-12 text-white" style={{ animation: 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
-            ) : isRecording ? (
-              <Mic className="w-12 h-12 text-white animate-pulse" />
             ) : isEnabled ? (
               <Mic className="w-12 h-12 text-white" />
             ) : (
@@ -347,16 +341,14 @@ export default function VoiceChatbot() {
         {/* Status Text with Glass Effect */}
         <div className="mt-8 px-6 py-3 rounded-2xl backdrop-blur-xl bg-white/10 border border-white/20 shadow-xl">
           <p className={`text-center text-lg text-white font-medium drop-shadow-md transition-all duration-300 ${
-            isAiSpeaking || isResponding || isRecording ? 'animate-pulse' : ''
+            isAiSpeaking || isResponding ? 'animate-pulse' : ''
           }`}>
             {isAiSpeaking 
               ? "🔊 AI Speaking - Click to interrupt" 
               : isResponding
               ? "⏳ Processing your request..."
-              : isRecording 
-              ? "🎤 Listening to you..." 
               : isEnabled
-              ? "👂 Ready - Start speaking anytime"
+              ? "👂 Ready - Start speaking"
               : "Tap to activate voice assistant"}
           </p>
         </div>
