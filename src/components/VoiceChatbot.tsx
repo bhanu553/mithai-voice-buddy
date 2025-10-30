@@ -18,6 +18,8 @@ export default function VoiceChatbot() {
   const recognitionRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const pendingInterruptionRef = useRef(false);
+  const reinitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isListeningRef = useRef(false);
 
   useEffect(() => {
     // Initialize Speech Recognition
@@ -62,11 +64,13 @@ export default function VoiceChatbot() {
           setIsRecording(false);
           setUserTranscript(transcript);
           
-          // Process immediately after a brief pause
+          // Reset interruption flag immediately so audio.onended can restart mic
+          pendingInterruptionRef.current = false;
+          
+          // Process with standard delay to ensure clean state
           setTimeout(async () => {
             await sendToBackend(transcript);
-            pendingInterruptionRef.current = false;
-          }, 100);
+          }, 300);
           
           return;
         }
@@ -103,6 +107,7 @@ export default function VoiceChatbot() {
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
+        isListeningRef.current = false;
         // Restart listening if enabled and not handling interruption
         if (isEnabled && !pendingInterruptionRef.current) {
           setTimeout(() => startListening(), 300);
@@ -112,13 +117,14 @@ export default function VoiceChatbot() {
       recognitionRef.current.onend = () => {
         console.log('🎤 Recognition ended');
         setIsRecording(false);
+        isListeningRef.current = false;
         
         // Auto-restart listening if enabled, AI not speaking, and not handling interruption
         if (isEnabled && !isAiSpeaking && !isResponding && !pendingInterruptionRef.current) {
           setTimeout(() => {
             console.log('🔄 Auto-restarting mic after recognition end');
             startListening();
-          }, 200);
+          }, 300);
         }
       };
     }
@@ -131,10 +137,14 @@ export default function VoiceChatbot() {
           // Ignore
         }
       }
+      // Cleanup timeouts
+      if (reinitTimeoutRef.current) {
+        clearTimeout(reinitTimeoutRef.current);
+      }
     };
   }, [isEnabled, isAiSpeaking, isResponding]);
 
-  const startListening = () => {
+  const startListening = (retryAttempt: number = 0) => {
     if (!recognitionRef.current) return;
     
     // Don't start if AI is speaking or system is processing
@@ -146,16 +156,36 @@ export default function VoiceChatbot() {
     // Prevent starting if already recording
     if (isRecording) {
       console.log('⚠️ Already recording, skipping start');
+      isListeningRef.current = true;
       return;
     }
     
     try {
-      console.log('🎤 Starting speech recognition...');
+      console.log('🎤 Starting speech recognition...', retryAttempt > 0 ? `(retry ${retryAttempt})` : '');
       setIsRecording(true);
+      isListeningRef.current = true;
       recognitionRef.current.start();
+      
+      // Verify mic started successfully after 300ms - retry if not listening
+      if (retryAttempt === 0) {
+        clearTimeout(reinitTimeoutRef.current!);
+        reinitTimeoutRef.current = setTimeout(() => {
+          if (!isRecording && isEnabled && !isAiSpeaking && !isResponding) {
+            console.log('⚠️ Mic start verification failed - attempting retry');
+            startListening(1);
+          }
+        }, 300);
+      }
     } catch (error) {
       console.error('Error starting recognition:', error);
       setIsRecording(false);
+      isListeningRef.current = false;
+      
+      // Retry once if first attempt fails
+      if (retryAttempt === 0 && isEnabled) {
+        console.log('⚠️ Retrying mic start after error...');
+        setTimeout(() => startListening(1), 300);
+      }
     }
   };
 
@@ -175,6 +205,7 @@ export default function VoiceChatbot() {
       currentAudioRef.current = null;
       setIsAiSpeaking(false);
       setAiResponse("");
+      isListeningRef.current = false;
       console.log('✅ AI audio stopped cleanly');
     }
   };
@@ -193,11 +224,11 @@ export default function VoiceChatbot() {
       setIsResponding(false);
       setIsEnabled(true); // Ensure assistant stays enabled
       
-      // Restart mic quickly after interruption
+      // Restart mic after interruption with standard delay
       setTimeout(() => {
         pendingInterruptionRef.current = false;
         startListening();
-      }, 100);
+      }, 300);
       return;
     }
 
@@ -216,7 +247,7 @@ export default function VoiceChatbot() {
       // Turn ON assistant and start listening
       setIsEnabled(true);
       pendingInterruptionRef.current = false;
-      setTimeout(() => startListening(), 100);
+      setTimeout(() => startListening(), 300);
       console.log('✅ Assistant enabled');
     }
   };
