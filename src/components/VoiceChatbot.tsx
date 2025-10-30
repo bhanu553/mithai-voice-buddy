@@ -24,25 +24,67 @@ export default function VoiceChatbot() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
+      // Enable continuous recognition for interruption capability
+      recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
 
       recognitionRef.current.onresult = async (event: any) => {
-        const transcript = event.results[0][0].transcript;
+        const transcript = event.results[event.results.length - 1][0].transcript;
         console.log('✅ Speech recognized:', transcript);
-        setIsRecording(false);
-        setUserTranscript(transcript);
         
-        // If AI is speaking, mark for interruption and stop audio
+        // Check if AI is speaking - if so, interrupt immediately
         if (isAiSpeaking) {
           console.log('🛑 User interrupted AI - stopping playback');
           pendingInterruptionRef.current = true;
-          stopAiAudio();
-          // Process immediately - mic auto-stopped after recognition
-          await sendToBackend(transcript);
-        } else {
-          // Normal flow - send immediately
+          
+          // Stop AI audio immediately
+          if (currentAudioRef.current) {
+            currentAudioRef.current.pause();
+            currentAudioRef.current.currentTime = 0;
+            const audioUrl = currentAudioRef.current.src;
+            if (audioUrl && audioUrl.startsWith('blob:')) {
+              URL.revokeObjectURL(audioUrl);
+            }
+            currentAudioRef.current = null;
+            setIsAiSpeaking(false);
+          }
+          
+          // Stop recognition temporarily to process
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.stop();
+            } catch (e) {
+              console.error('Error stopping recognition:', e);
+            }
+          }
+          
+          setIsRecording(false);
+          setUserTranscript(transcript);
+          
+          // Process immediately after a brief pause
+          setTimeout(async () => {
+            await sendToBackend(transcript);
+            pendingInterruptionRef.current = false;
+          }, 100);
+          
+          return;
+        }
+        
+        // Normal flow - only process if not currently responding
+        if (!isResponding) {
+          setIsRecording(false);
+          setUserTranscript(transcript);
+          
+          // Stop recognition to process this input
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.stop();
+            } catch (e) {
+              console.error('Error stopping recognition:', e);
+            }
+          }
+          
           await sendToBackend(transcript);
         }
         
@@ -50,21 +92,33 @@ export default function VoiceChatbot() {
         setTimeout(() => setUserTranscript(""), 3000);
       };
 
+      // Detect when user starts speaking (for interruption)
+      recognitionRef.current.onaudiostart = () => {
+        console.log('🎤 Audio input detected - mic is receiving input');
+        if (isAiSpeaking && !pendingInterruptionRef.current) {
+          console.log('⚠️ User voice detected during AI speech - preparing interruption');
+        }
+      };
+
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsRecording(false);
-        // Restart listening if enabled
-        if (isEnabled && !isAiSpeaking) {
-          setTimeout(() => startListening(), 500);
+        // Restart listening if enabled and not handling interruption
+        if (isEnabled && !pendingInterruptionRef.current) {
+          setTimeout(() => startListening(), 300);
         }
       };
 
       recognitionRef.current.onend = () => {
         console.log('🎤 Recognition ended');
         setIsRecording(false);
+        
         // Auto-restart listening if enabled, AI not speaking, and not handling interruption
         if (isEnabled && !isAiSpeaking && !isResponding && !pendingInterruptionRef.current) {
-          setTimeout(() => startListening(), 300);
+          setTimeout(() => {
+            console.log('🔄 Auto-restarting mic after recognition end');
+            startListening();
+          }, 200);
         }
       };
     }
@@ -121,16 +175,6 @@ export default function VoiceChatbot() {
       currentAudioRef.current = null;
       setIsAiSpeaking(false);
       setAiResponse("");
-      
-      // Stop mic if it's running
-      if (isRecording && recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-          setIsRecording(false);
-        } catch (e) {
-          console.error('⚠️ Error stopping recognition:', e);
-        }
-      }
       console.log('✅ AI audio stopped cleanly');
     }
   };
@@ -143,10 +187,17 @@ export default function VoiceChatbot() {
 
     if (isAiSpeaking || isResponding) {
       // If AI is speaking or processing, interrupt and start listening immediately
+      console.log('🛑 Manual interrupt triggered');
+      pendingInterruptionRef.current = true;
       stopAiAudio();
       setIsResponding(false);
       setIsEnabled(true); // Ensure assistant stays enabled
-      setTimeout(() => startListening(), 100);
+      
+      // Restart mic quickly after interruption
+      setTimeout(() => {
+        pendingInterruptionRef.current = false;
+        startListening();
+      }, 100);
       return;
     }
 
@@ -154,6 +205,7 @@ export default function VoiceChatbot() {
       // Turn OFF assistant
       setIsEnabled(false);
       setIsRecording(false);
+      pendingInterruptionRef.current = false;
       try {
         recognitionRef.current.stop();
       } catch (e) {
@@ -163,6 +215,7 @@ export default function VoiceChatbot() {
     } else {
       // Turn ON assistant and start listening
       setIsEnabled(true);
+      pendingInterruptionRef.current = false;
       setTimeout(() => startListening(), 100);
       console.log('✅ Assistant enabled');
     }
@@ -238,6 +291,10 @@ export default function VoiceChatbot() {
 
     } catch (error) {
       console.error('❌ Backend error:', error);
+      // Reinitialize mic on error
+      if (isEnabled && !pendingInterruptionRef.current) {
+        setTimeout(() => startListening(), 300);
+      }
     } finally {
       setIsResponding(false);
     }
@@ -281,7 +338,7 @@ export default function VoiceChatbot() {
           setTimeout(() => {
             console.log('🔄 Reactivating mic after AI speech');
             startListening();
-          }, 500);
+          }, 300);
         }
         
         // Reset interruption flag
@@ -296,8 +353,8 @@ export default function VoiceChatbot() {
         setAiResponse("");
         
         // Reinitialize mic after error
-        if (isEnabled) {
-          setTimeout(() => startListening(), 500);
+        if (isEnabled && !pendingInterruptionRef.current) {
+          setTimeout(() => startListening(), 300);
         }
       };
     } catch (error) {
@@ -306,8 +363,8 @@ export default function VoiceChatbot() {
       setAiResponse("");
       
       // Reinitialize mic after exception
-      if (isEnabled) {
-        setTimeout(() => startListening(), 500);
+      if (isEnabled && !pendingInterruptionRef.current) {
+        setTimeout(() => startListening(), 300);
       }
     }
   };
