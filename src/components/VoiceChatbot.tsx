@@ -20,6 +20,8 @@ export default function VoiceChatbot() {
   const pendingInterruptionRef = useRef(false);
   const reinitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isListeningRef = useRef(false);
+  const isEnabledRef = useRef(false);
+  const micAlreadyRestartedRef = useRef(false);
 
   useEffect(() => {
     // Initialize Speech Recognition
@@ -64,13 +66,34 @@ export default function VoiceChatbot() {
           setIsRecording(false);
           setUserTranscript(transcript);
           
-          // Reset interruption flag immediately so audio.onended can restart mic
-          pendingInterruptionRef.current = false;
-          
-          // Process with standard delay to ensure clean state
+          // Process immediately and restart mic - don't wait for audio.onended since audio was interrupted
           setTimeout(async () => {
             await sendToBackend(transcript);
           }, 300);
+          
+          // Start mic immediately after sending to backend - don't wait for audio.onended
+          // This ensures mic is ready even if new audio doesn't play or plays incorrectly
+          pendingInterruptionRef.current = false;
+          micAlreadyRestartedRef.current = true;
+          
+          // Wait for audio to start playing, then restart mic regardless of AI speaking state
+          setTimeout(() => {
+            if (isEnabledRef.current) {
+              console.log('🔄 Restarting mic after voice interruption (listening during AI playback)');
+              // Force start even if AI is speaking - we want continuous listening
+              if (recognitionRef.current) {
+                try {
+                  console.log('🎤 Force-starting mic during AI playback for interruptions');
+                  setIsRecording(true);
+                  isListeningRef.current = true;
+                  recognitionRef.current.start();
+                } catch (e) {
+                  console.error('Error force-starting mic:', e);
+                }
+              }
+            }
+            micAlreadyRestartedRef.current = false;
+          }, 1000); // Start after backend response and initial audio start
           
           return;
         }
@@ -109,7 +132,7 @@ export default function VoiceChatbot() {
         setIsRecording(false);
         isListeningRef.current = false;
         // Restart listening if enabled and not handling interruption
-        if (isEnabled && !pendingInterruptionRef.current) {
+        if (isEnabledRef.current && !pendingInterruptionRef.current) {
           setTimeout(() => startListening(), 300);
         }
       };
@@ -120,7 +143,7 @@ export default function VoiceChatbot() {
         isListeningRef.current = false;
         
         // Auto-restart listening if enabled, AI not speaking, and not handling interruption
-        if (isEnabled && !isAiSpeaking && !isResponding && !pendingInterruptionRef.current) {
+        if (isEnabledRef.current && !isAiSpeaking && !isResponding && !pendingInterruptionRef.current) {
           setTimeout(() => {
             console.log('🔄 Auto-restarting mic after recognition end');
             startListening();
@@ -170,7 +193,7 @@ export default function VoiceChatbot() {
       if (retryAttempt === 0) {
         clearTimeout(reinitTimeoutRef.current!);
         reinitTimeoutRef.current = setTimeout(() => {
-          if (!isRecording && isEnabled && !isAiSpeaking && !isResponding) {
+          if (!isRecording && isEnabledRef.current && !isAiSpeaking && !isResponding) {
             console.log('⚠️ Mic start verification failed - attempting retry');
             startListening(1);
           }
@@ -182,7 +205,7 @@ export default function VoiceChatbot() {
       isListeningRef.current = false;
       
       // Retry once if first attempt fails
-      if (retryAttempt === 0 && isEnabled) {
+      if (retryAttempt === 0 && isEnabledRef.current) {
         console.log('⚠️ Retrying mic start after error...');
         setTimeout(() => startListening(1), 300);
       }
@@ -223,6 +246,7 @@ export default function VoiceChatbot() {
       stopAiAudio();
       setIsResponding(false);
       setIsEnabled(true); // Ensure assistant stays enabled
+      isEnabledRef.current = true;
       
       // Restart mic after interruption with standard delay
       setTimeout(() => {
@@ -235,6 +259,7 @@ export default function VoiceChatbot() {
     if (isEnabled) {
       // Turn OFF assistant
       setIsEnabled(false);
+      isEnabledRef.current = false;
       setIsRecording(false);
       pendingInterruptionRef.current = false;
       try {
@@ -246,6 +271,7 @@ export default function VoiceChatbot() {
     } else {
       // Turn ON assistant and start listening
       setIsEnabled(true);
+      isEnabledRef.current = true;
       pendingInterruptionRef.current = false;
       setTimeout(() => startListening(), 300);
       console.log('✅ Assistant enabled');
@@ -323,7 +349,7 @@ export default function VoiceChatbot() {
     } catch (error) {
       console.error('❌ Backend error:', error);
       // Reinitialize mic on error
-      if (isEnabled && !pendingInterruptionRef.current) {
+      if (isEnabledRef.current && !pendingInterruptionRef.current) {
         setTimeout(() => startListening(), 300);
       }
     } finally {
@@ -365,15 +391,17 @@ export default function VoiceChatbot() {
         console.log('🎤 Audio complete - reinitializing mic');
         
         // Clean reinitialization: single activation after AI finishes
-        if (isEnabled && !pendingInterruptionRef.current) {
+        // Only restart if not already restarted by interruption flow
+        if (isEnabledRef.current && !pendingInterruptionRef.current && !micAlreadyRestartedRef.current) {
           setTimeout(() => {
             console.log('🔄 Reactivating mic after AI speech');
             startListening();
           }, 300);
         }
         
-        // Reset interruption flag
+        // Reset flags
         pendingInterruptionRef.current = false;
+        micAlreadyRestartedRef.current = false;
       };
 
       audio.onerror = (e) => {
@@ -384,7 +412,7 @@ export default function VoiceChatbot() {
         setAiResponse("");
         
         // Reinitialize mic after error
-        if (isEnabled && !pendingInterruptionRef.current) {
+        if (isEnabledRef.current && !pendingInterruptionRef.current) {
           setTimeout(() => startListening(), 300);
         }
       };
@@ -394,7 +422,7 @@ export default function VoiceChatbot() {
       setAiResponse("");
       
       // Reinitialize mic after exception
-      if (isEnabled && !pendingInterruptionRef.current) {
+      if (isEnabledRef.current && !pendingInterruptionRef.current) {
         setTimeout(() => startListening(), 300);
       }
     }
